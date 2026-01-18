@@ -1,0 +1,17 @@
+[Unit]
+Description=iEarLM RAG API Service
+After=network.target
+
+[Service]
+Type=simple
+User=icps806
+WorkingDirectory=/home/icps806/hdd_1_2tb/minyu/web-server/backend/api-server-ollama2rag/server
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 0.0.0.0 --port 9000
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/icps806/hdd_1_2tb/minyu/web-server/logs/rag_api.log
+StandardError=append:/home/icps806/hdd_1_2tb/minyu/web-server/logs/rag_api.log
+
+[Install]
+WantedBy=multi-user.target

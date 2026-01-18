@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test files
+test_*.py
+*_test.py
+
+# GUI files (not needed in Docker)
+tests/
+test_gui.py
+start_gui.ps1
+
+# Documentation
+*.md
+!README.md
+
+# Weights (通過 volume 掛載，不需要打包)
+weights/
+
+# Docker
+docker/
+

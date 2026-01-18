@@ -1,0 +1,35 @@
+services:
+  api:
+    build:
+      context: ../..  # 項目根目錄 (web-iear-lm)
+      dockerfile: backend/api-server-yolov7seg/server/Dockerfile
+    image: iear-lm-yolov7-seg-api:latest
+    container_name: iear-lm-yolov7-seg-api
+    ports:
+      - "5000:5000"
+    volumes:
+      # 掛載權重文件（從 weights 目錄）
+      - ./weights/best.pt:/app/weights/best.pt:ro
+      # 如果需要訪問 yolov7-seg 代碼，取消下面的註釋
+      # - ../example/sample code/yolov7-seg:/app/yolov7-seg:ro
+    environment:
+      - DEVICE=${DEVICE:-0}  # 從環境變數讀取，默認使用 GPU (0)，設為 cpu 則使用 CPU
+      - FLASK_ENV=production
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    # GPU 支援（參考 ollama 配置）
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+

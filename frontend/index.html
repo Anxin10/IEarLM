@@ -1,0 +1,151 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iEarLM - 中外耳病灶識別暨臨床診斷報告自動生成系統</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      
+      /* 定義共用的漸層變數或類別 */
+      .gemini-gradient-text {
+        background: linear-gradient(135deg, #7EE7FF 0%, #C493FF 50%, #FF99C8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        color: transparent;
+        font-weight: 900;
+        filter: drop-shadow(0px 0px 1px rgba(255, 255, 255, 0.4));
+      }
+
+      /* Logo 容器 */
+      .logo-container {
+        display: flex;
+        align-items: center;
+        /* gap: 0.1em; */
+      }
+
+      /* 智慧眼鏡圖示樣式 - 嘗試套用漸層 */
+      .logo-icon {
+        display: inline-block;
+        color: #C493FF; /* Fallback */
+      }
+      /* 若瀏覽器支援 SVG stroke 漸層較複雜，這裡使用單色配合或利用 mask，
+         為求穩定漂亮，這裡讓眼鏡呈現亮眼的藍紫色，與漸層呼應 */
+      .glasses-icon {
+        stroke: url(#logo-gradient) !important;
+      }
+
+      /* iEar 主體樣式 */
+      .logo-main {
+        display: inline-block;
+        line-height: 1;
+      }
+
+      /* LM 上標樣式 - 修正為一致的相對位置 */
+      .brand-sup {
+        display: inline-block;
+        font-size: 0.4em; /* 相對主字體大小 */
+        font-weight: 900;
+        margin-left: 0.15em;
+        position: relative;
+        top: -0.6em; /* 統一上移比例 */
+        
+        background: linear-gradient(135deg, #7EE7FF 0%, #C493FF 50%, #FF99C8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        color: transparent;
+        letter-spacing: 0.05em;
+        filter: drop-shadow(0px 0px 1px rgba(255, 255, 255, 0.4));
+      }
+      
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 20px;
+        border: 1px solid transparent;
+        background-clip: content-box;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #334155;
+        background-clip: content-box;
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+      }
+      .dark * {
+        scrollbar-color: #334155 transparent;
+      }
+
+      /* Hide number input spinners */
+      input[type=number]::-webkit-inner-spin-button, 
+      input[type=number]::-webkit-outer-spin-button { 
+        -webkit-appearance: none; 
+        margin: 0; 
+      }
+      input[type=number] {
+        -moz-appearance: textfield;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.11.0",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "framer-motion": "https://esm.sh/framer-motion@^11.0.0",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-50 dark:bg-[#020617] transition-colors duration-500">
+    <!-- Define SVG Gradient for Icons -->
+    <svg width="0" height="0" class="absolute pointer-events-none">
+      <defs>
+        <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#7EE7FF" />
+          <stop offset="50%" stop-color="#C493FF" />
+          <stop offset="100%" stop-color="#FF99C8" />
+        </linearGradient>
+      </defs>
+    </svg>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

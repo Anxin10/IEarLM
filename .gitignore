@@ -1,0 +1,57 @@
+# 依賴
+node_modules/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 構建輸出
+frontend/dist/
+frontend/.vite/
+*.log
+
+# 環境變數
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系統文件
+.DS_Store
+Thumbs.db
+
+# 日誌和 PID
+logs/
+pids/
+*.pid
+
+# Docker
+.docker/
+
+# 備份文件
+*.bak
+*.backup
+
+# 臨時文件
+tmp/
+temp/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Storage
+qdrant_storage/
+ollama_models/
+report_data/
+output_reports/
+saved_reports/
+kb_storage/

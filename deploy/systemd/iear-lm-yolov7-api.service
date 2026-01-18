@@ -1,0 +1,17 @@
+[Unit]
+Description=iEarLM YOLOv7 API Service
+After=network.target
+
+[Service]
+Type=simple
+User=icps806
+WorkingDirectory=/home/icps806/hdd_1_2tb/minyu/web-server/backend/api-server-yolov7seg/server
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/python3 api_server.py --weights ../weights/best.pt --port 5000
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/icps806/hdd_1_2tb/minyu/web-server/logs/yolov7_api.log
+StandardError=append:/home/icps806/hdd_1_2tb/minyu/web-server/logs/yolov7_api.log
+
+[Install]
+WantedBy=multi-user.target

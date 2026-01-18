@@ -1,0 +1,76 @@
+version: "3.9"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.10.0
+    container_name: iear-lm-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    # 增加檔案描述符限制，解決 "Too many open files" 錯誤
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    restart: always
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: iear-lm-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    # ✅ 啟用 GPU 支援
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    restart: always
+
+  api:
+    build: ./server
+    image: iear-lm-server-api:latest
+    container_name: iear-lm-server-api
+    depends_on:
+      - qdrant
+      - ollama
+    ports:
+      - "9000:9000"
+    volumes:
+      # 實時同步模板文件，無需重新構建鏡像
+      - ./server/templates:/app/templates:ro
+      # 可選：如果需要實時同步 report_data 目錄
+      - ./server/report_data:/app/report_data:rw
+    environment:
+      # Qdrant連線資訊
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_COLLECTION=knowledge_base
+
+      # Ollama連線資訊
+      - OLLAMA_HOST=ollama
+      - OLLAMA_PORT=11434
+      - LLM_MODEL=gemma3:12b  # 使用 gemma3:12b 模型（如果尚未下載，請運行: docker exec iear-lm-ollama ollama pull gemma3:12b）
+
+      # Embedding 模型 (用 ollama 內建或你自訂 embedding 模型名)
+      - EMBEDDING_MODEL=nomic-embed-text
+
+      # YOLOv7 API 連線資訊（使用主機網絡訪問）
+      - YOLOV7_API_URL=http://host.docker.internal:5000/api
+
+    # 添加 extra_hosts 以訪問主機服務
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    restart: always
+
+volumes:
+  ollama_models:

@@ -1,0 +1,8 @@
+{
+  "name": "Copy of iEarLM",
+  "description": "Professional Ear Canal Disease Management System with AI Integration (YOLOv7 & LLM)",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}

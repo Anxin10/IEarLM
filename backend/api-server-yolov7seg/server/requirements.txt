@@ -1,0 +1,21 @@
+# Flask API 服務器依賴
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# YOLOv7-seg 核心依賴
+torch>=1.7.0
+torchvision>=0.8.1
+numpy<2.0  # 修復 NumPy 2.x 兼容性問題
+opencv-python>=4.1.1
+Pillow>=7.1.2
+PyYAML>=5.3.1
+scipy>=1.4.1
+tqdm>=4.64.0
+matplotlib>=3.2.2
+pandas>=1.1.4
+seaborn>=0.11.0
+requests>=2.23.0
+
+# 其他工具
+protobuf<=3.20.1
+

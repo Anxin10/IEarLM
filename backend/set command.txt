@@ -1,0 +1,11 @@
+cd D:\code\rag-ollama
+
+# 假設裝錯可以執行
+docker compose down
+docker compose build api
+docker compose up -d
+
+# 正常安裝程序
+docker compose build api
+docker compose up -d
+docker ps
