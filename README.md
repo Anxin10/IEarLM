@@ -1,6 +1,13 @@
 # IEAR-LM (Intelligent Ear Analysis and Learning Management)
 
+
 耳科疾病智能診斷系統 - 整合圖像檢測和 RAG 問答的完整解決方案
+
+> **Latest Update (2026-01-21):**
+> - **SQL Persistence for Findings**: Implemented full database storage for pathological findings (EAC/TM).
+> - **New API Endpoints**: Added `PUT /api/v1/cases/{id}` and `POST /api/v1/cases/{id}/diagnosis` for saving diagnosis results.
+> - **Documentation**: Fully translated `models_sql.py` comments to Traditional Chinese and added detailed field descriptions.
+
 
 ## 專案結構
 
