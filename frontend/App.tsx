@@ -118,7 +118,66 @@ const App: React.FC = () => {
     }
   };
 
+  //JX修改
   const handleUpdatePatient = (data: Partial<Patient>) => {
+    // 1. 找出原始資料 (為了取得資料庫的 dbId)
+    // data.id 是病歷號 (字串)，我們需要用它去清單裡找對應的物件
+    const originalPatient = patients.find(p => p.id === data.id);
+    const dbId = (originalPatient as any)?.dbId;
+
+    // 2. UI 樂觀更新 
+    if (data.id) {
+        setPatients(prev => prev.map(p => p.id === data.id ? { ...p, ...data } as Patient : p));
+    }
+    // 關閉視窗
+    setEditingPatient(null);
+    setIsModalOpen(false);
+
+    // 3. 檢查是否有 dbId (如果是剛新增的假資料可能沒有)
+    if (!dbId) {
+      console.warn("找不到資料庫 ID，僅執行前端更新");
+      return;
+    }
+
+    // 4. 【背景執行】發送 PUT 請求給後端
+    // 這裡使用您的 IP，確保連線穩定
+    //const API_URL = 'http://10.147.20.69:9000/api/v1/patients';
+
+    const currentHost = window.location.hostname; 
+    const API_URL = `http://${currentHost}:9000/api/v1/patients`;
+    // data.birthDate 已經在 Modal 裡組合成 "YYYY-MM-DD" 了
+    const payload = {
+        id: dbId,
+        name: data.name,
+        gender: data.gender,
+        birth_date: data.birthDate || "2000-01-01" 
+    };
+
+    console.log("正在發送更新請求...", payload);
+
+    fetch(API_URL, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(async response => {
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("後端更新失敗:", errorText);
+            alert("資料庫更新失敗，請檢查網路連線或重新整理頁面。");
+            // (選用) 失敗時可以考慮在這裡把畫面還原，或者提示使用者
+        } else {
+            console.log("資料庫更新成功！");
+        }
+    })
+    .catch(error => {
+        console.error("連線錯誤:", error);
+        alert("無法連線到伺服器，請確認後端是否開啟。");
+    });
+    
+    /*
     // This function updates the state but DOES NOT open the modal.
     // It is used by PatientDetail for auto-saving exam data.
     if (data.id) {
@@ -126,7 +185,7 @@ const App: React.FC = () => {
     } else if (editingPatient) {
       setPatients(prev => prev.map(p => p.id === editingPatient.id ? { ...p, ...data } as Patient : p));
       setEditingPatient(null);
-    }
+    }*/
   };
 
   //JX新增
@@ -150,7 +209,9 @@ const App: React.FC = () => {
     // 注意：如果您的瀏覽器不是在本機跑 (例如用手機或別人電腦)，localhost 會連不到
     // 建議改成您電腦的區網 IP，例如 'http://10.147.20.69:9000/api/v1/patients'
     //const API_URL = 'http://localhost:9000/api/v1/patients'; 
-    const API_URL = 'http://10.147.20.69:9000/api/v1/patients';
+    //const API_URL = 'http://10.147.20.69:9000/api/v1/patients';
+    const currentHost = window.location.hostname; 
+    const API_URL = `http://${currentHost}:9000/api/v1/patients`;
 
     fetch(API_URL, {
         method: 'DELETE',

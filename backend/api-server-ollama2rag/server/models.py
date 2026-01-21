@@ -73,3 +73,32 @@ class FolderUpdateRequest(BaseModel):
 class FileMoveRequest(BaseModel):
     """移動文件請求模型"""
     folder_id: str
+
+
+# ==========================================================
+# Clinical Case Management Models
+# ==========================================================
+
+class FindingCreate(BaseModel):
+    region: str # 'EAC' or 'TM'
+    code: str = ""
+    label_zh: str
+    label_en: str
+    is_normal: bool = False
+    percentage: float = 0.0
+
+class ExamRecordCreate(BaseModel):
+    side: str # 'left' or 'right'
+    status: str = "pending"
+    diagnosis: Optional[str] = None
+    image_path: Optional[str] = None # Base64 or URL
+    notes: Optional[str] = None
+    findings: List[FindingCreate] = []
+
+class CreateCaseRequest(BaseModel):
+    patient_id: int # Database ID of the patient
+    visit_date: str # YYYY-MM-DD
+    diagnosis_summary: Optional[str] = None
+    general_notes: Optional[str] = None
+    exams: List[ExamRecordCreate] = []
+    doctor_id: Optional[int] = None

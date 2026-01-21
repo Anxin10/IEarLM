@@ -2,8 +2,9 @@
 import React, { useReducer, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Patient, UserRole, Language, EarExamRecord, EarSide, ReportData, Lesion } from '../types';
+import { createMedicalCase, CreateCaseRequest, FindingCreate, ExamRecordCreate } from '../services/apiService';
 import { translations } from '../services/translations';
-import { 
+import {
   ArrowLeft, FileText, CheckCircle2, Unlock, Lock,
   AlertTriangle, Check, Download
 } from 'lucide-react';
@@ -29,7 +30,7 @@ type DetailState = {
   aiResult: AIResult | null; // Transient AI result for the active side
 };
 
-type Action = 
+type Action =
   | { type: 'INIT_DATA'; payload: { left: EarExamRecord; right: EarExamRecord; notes: string } }
   | { type: 'SWITCH_SIDE'; payload: EarSide }
   | { type: 'UPDATE_EXAM'; payload: { side: EarSide; updates: Partial<EarExamRecord> } }
@@ -63,18 +64,18 @@ function detailReducer(state: DetailState, action: Action): DetailState {
     case 'UPDATE_EXAM':
       const { side, updates } = action.payload;
       const currentExam = state[side];
-      
+
       // Determine new status logic:
       // 1. If 'status' is explicitly provided in updates (e.g., reset to 'pending'), use it.
       // 2. If currently 'pending' and we are adding data (image or findings), switch to 'draft'.
       let newStatus = updates.status !== undefined ? updates.status : currentExam.status;
-      
+
       // Auto-promote to draft if adding content
       if (currentExam.status === 'pending' && !updates.status) {
-          const hasContent = updates.imageUrl || (updates.detailedFindings && (updates.detailedFindings.EAC.length > 0 || updates.detailedFindings.TM.length > 0));
-          if (hasContent) {
-              newStatus = 'draft';
-          }
+        const hasContent = updates.imageUrl || (updates.detailedFindings && (updates.detailedFindings.EAC.length > 0 || updates.detailedFindings.TM.length > 0));
+        if (hasContent) {
+          newStatus = 'draft';
+        }
       }
 
       return {
@@ -105,7 +106,7 @@ function detailReducer(state: DetailState, action: Action): DetailState {
 const PatientDetail: React.FC<PatientDetailProps> = ({ patients, role, onEdit, onDelete, lang }) => {
   const t = (translations[lang] as any);
   const { id } = useParams<{ id: string }>();
-  
+
   const patient = patients.find(p => p.id === id);
   const [state, dispatch] = useReducer(detailReducer, initialState);
 
@@ -113,20 +114,20 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patients, role, onEdit, o
   useEffect(() => {
     if (patient) {
       if (patient.exams) {
-        dispatch({ 
-          type: 'INIT_DATA', 
-          payload: { 
-            left: patient.exams.left, 
-            right: patient.exams.right, 
-            notes: patient.notes 
-          } 
+        dispatch({
+          type: 'INIT_DATA',
+          payload: {
+            left: patient.exams.left,
+            right: patient.exams.right,
+            notes: patient.notes
+          }
         });
       } else {
         // Fallback for legacy data structure (migration)
-        dispatch({ 
-          type: 'INIT_DATA', 
-          payload: { 
-            left: { 
+        dispatch({
+          type: 'INIT_DATA',
+          payload: {
+            left: {
               status: patient.diagnosis !== 'Normal' ? 'completed' : 'pending',
               diagnosis: patient.diagnosis,
               notes: patient.notes,
@@ -135,7 +136,7 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patients, role, onEdit, o
             },
             right: { status: 'pending', diagnosis: '', notes: '', segmentationData: [] },
             notes: patient.notes
-          } 
+          }
         });
       }
     }
@@ -145,21 +146,21 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patients, role, onEdit, o
   // Syncs local reducer state back to the global App state whenever it changes
   const syncToGlobal = useCallback((newState: DetailState) => {
     if (!patient) return;
-    
+
     // Construct summarized diagnosis string for the list view
     const leftDx = newState.left.diagnosis || (lang === 'zh' ? '未檢查' : 'Pending');
     const rightDx = newState.right.diagnosis || (lang === 'zh' ? '未檢查' : 'Pending');
     const summaryDiagnosis = `L: ${leftDx} / R: ${rightDx}`;
 
     const updatedPatient: Patient = {
-        ...patient,
-        exams: {
-            left: newState.left,
-            right: newState.right,
-            shared: { impression: newState.sharedNotes, orders: [], generalNotes: '' }
-        },
-        notes: newState.sharedNotes,
-        diagnosis: summaryDiagnosis // Update summary for PatientList
+      ...patient,
+      exams: {
+        left: newState.left,
+        right: newState.right,
+        shared: { impression: newState.sharedNotes, orders: [], generalNotes: '' }
+      },
+      notes: newState.sharedNotes,
+      diagnosis: summaryDiagnosis // Update summary for PatientList
     };
     onEdit(updatedPatient);
   }, [patient, onEdit, lang]);
@@ -167,11 +168,11 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patients, role, onEdit, o
   // Skip first render sync, then sync on changes
   const isFirstRender = React.useRef(true);
   useEffect(() => {
-      if (isFirstRender.current) {
-          isFirstRender.current = false;
-          return;
-      }
-      syncToGlobal(state);
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    syncToGlobal(state);
   }, [state.left, state.right, state.sharedNotes]);
 
 
@@ -189,33 +190,156 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patients, role, onEdit, o
   // Lock Logic: Exams are considered "Locked" if status is 'completed'
   const isGlobalLocked = state.left.status === 'completed' && state.right.status === 'completed';
 
-  const handleToggleGlobalLock = () => {
-    // Toggle between 'completed' (Locked) and 'draft' (Editable)
-    dispatch({ 
-        type: 'TOGGLE_GLOBAL_LOCK', 
-        payload: !isGlobalLocked 
-    });
+
+
+  // ... (existing imports)
+
+  // Helper to map frontend Lesion[] to backend FindingCreate[]
+  const mapFindings = (details: { EAC: Lesion[], TM: Lesion[] } | undefined): FindingCreate[] => {
+    if (!details) return [];
+    const findings: FindingCreate[] = [];
+
+    // Process EAC
+    details.EAC.forEach(l => findings.push({
+      region: 'EAC',
+      code: l.code,
+      label_zh: l.label_zh,
+      label_en: l.label_en,
+      is_normal: l.is_normal,
+      percentage: 0
+    }));
+
+    // Process TM
+    details.TM.forEach(l => findings.push({
+      region: 'TM',
+      code: l.code,
+      label_zh: l.label_zh,
+      label_en: l.label_en,
+      is_normal: l.is_normal,
+      percentage: l.percentage || 0
+    }));
+
+    return findings;
+  };
+
+  const handleToggleGlobalLock = async () => {
+    // If currently Locked -> Unlock (Edit Mode)
+    if (isGlobalLocked) {
+      dispatch({ type: 'TOGGLE_GLOBAL_LOCK', payload: false });
+      return;
+    }
+
+    // If currently Unlocked -> Lock (Save & Complete)
+    if (!patient || !patient.dbId) {
+      console.warn("Missing Patient DB ID, saving locally only.");
+      dispatch({ type: 'TOGGLE_GLOBAL_LOCK', payload: true });
+      return;
+    }
+
+    try {
+      const leftFindings = mapFindings(state.left.detailedFindings);
+      const rightFindings = mapFindings(state.right.detailedFindings);
+
+      const requestData: CreateCaseRequest = {
+        patient_id: patient.dbId,
+        visit_date: new Date().toISOString().split('T')[0],
+        diagnosis_summary: state.sharedNotes || `L: ${state.left.diagnosis} / R: ${state.right.diagnosis}`,
+        general_notes: state.sharedNotes,
+        exams: [
+          {
+            side: 'left',
+            status: 'completed',
+            diagnosis: state.left.diagnosis,
+            image_path: state.left.imageUrl || undefined,
+            notes: state.left.notes,
+            findings: leftFindings
+          },
+          {
+            side: 'right',
+            status: 'completed',
+            diagnosis: state.right.diagnosis,
+            image_path: state.right.imageUrl || undefined,
+            notes: state.right.notes,
+            findings: rightFindings
+          }
+        ]
+      };
+
+      await createMedicalCase(requestData);
+      // alert(lang === 'zh' ? '診斷已儲存' : 'Diagnosis Saved'); 
+      // Optional toast here
+
+      dispatch({
+        type: 'TOGGLE_GLOBAL_LOCK',
+        payload: true
+      });
+
+    } catch (e) {
+      console.error("Save failed:", e);
+      alert(lang === 'zh' ? '儲存失敗，請檢查網路或是後端狀況' : 'Save Failed');
+    }
   };
 
   const handleSwitchSide = (side: EarSide) => {
-      dispatch({ type: 'SWITCH_SIDE', payload: side });
+    dispatch({ type: 'SWITCH_SIDE', payload: side });
   };
 
-  const handleDownload = (format: 'word' | 'pdf') => {
-      if (!patient) return;
-      const data = getReportData();
-      const filename = `Report_${data.patient_id}_${data.visit_year}${data.visit_month}${data.visit_day}.${format === 'word' ? 'docx' : 'pdf'}`;
-      // In a real app, you would fetch/generate the actual binary file here
-      const content = `Mock ${format.toUpperCase()} Report for ${data.patient_name}\n\nDiagnosis: ${data.diagnosis}`;
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+  /* 
+   * Updated handleDownload to use real backend API instead of mock text files 
+   */
+  const handleDownload = async (format: 'word' | 'pdf') => {
+    if (!patient) return;
+
+    try {
+      // Ensure we have latest data - if not locked, maybe warn? 
+      // User can download draft reports too.
+      const reportData = getReportData();
+      const templateName = 'ENT_Clinic_Record_Design_Portrait_Fixed';
+
+      // 1. Generate Report
+      const response = await import('../services/apiService').then(mod =>
+        mod.generateReportWithTemplate(templateName, reportData, 'both')
+      );
+
+      // 2. Determine download URL based on format
+      let downloadUrl = '';
+      let fileName = '';
+
+      if (format === 'word' && response.docx) {
+        downloadUrl = response.docx.download_url;
+        fileName = `Report_${reportData.patient_id}_${reportData.visit_year}${reportData.visit_month}${reportData.visit_day}.docx`;
+      } else if (format === 'pdf' && response.pdf) {
+        downloadUrl = response.pdf.download_url;
+        fileName = `Report_${reportData.patient_id}_${reportData.visit_year}${reportData.visit_month}${reportData.visit_day}.pdf`;
+      } else {
+        alert('Report generation failed or format not available.');
+        return;
+      }
+
+      // 3. Trigger Download
+      // Using the downloadReport service would be cleaner if we had the ID, 
+      // but here we have the URL relative to API base. 
+      // Let's use a direct fetch to get blob and download.
+      // Or better, reuse the apiService's download function if possible, but the URL structure might differ.
+      // Let's use the explicit downloadReport from apiService using the report_id returned.
+
+      const reportId = format === 'word' ? response.docx?.report_id : response.pdf?.report_id;
+      if (reportId) {
+        const blob = await import('../services/apiService').then(mod => mod.downloadReport(reportId, format === 'word' ? 'docx' : 'pdf'));
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }
+
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Download failed: ' + (error instanceof Error ? error.message : String(error)));
+    }
   };
 
   if (!patient) return null;
@@ -224,142 +348,141 @@ const PatientDetail: React.FC<PatientDetailProps> = ({ patients, role, onEdit, o
 
   // Helper to format report data for the modal
   const getReportData = (): ReportData => {
-      const formatLesions = (l: Lesion[] | undefined) => l?.map(i => lang === 'zh' ? i.label_zh : i.label_en).join(', ') || (lang === 'zh' ? '無異常發現' : 'No findings');
-      return {
-          patient_id: patient.id,
-          patient_name: patient.name,
-          visit_year: new Date().getFullYear().toString(),
-          visit_month: (new Date().getMonth() + 1).toString().padStart(2, '0'),
-          visit_day: new Date().getDate().toString().padStart(2, '0'),
-          doctor_name: "Dr. Medical", // In a real app, get from 'user' context
-          right_ear_eac: formatLesions(state.right.detailedFindings?.EAC),
-          left_ear_eac: formatLesions(state.left.detailedFindings?.EAC),
-          right_ear_tm: formatLesions(state.right.detailedFindings?.TM),
-          left_ear_tm: formatLesions(state.left.detailedFindings?.TM),
-          // Extract percentage if available from the first TM lesion (simplification for report)
-          right_tm_percent: state.right.detailedFindings?.TM?.[0]?.percentage?.toString() || "",
-          left_tm_percent: state.left.detailedFindings?.TM?.[0]?.percentage?.toString() || "",
-          diagnosis: state.sharedNotes || `${state.left.diagnosis} / ${state.right.diagnosis}`,
-          orders: lang === 'zh' ? "建議兩週後回診追蹤。" : "Follow up in 2 weeks."
-      };
+    const formatLesions = (l: Lesion[] | undefined) => l?.map(i => lang === 'zh' ? i.label_zh : i.label_en).join(', ') || (lang === 'zh' ? '無異常發現' : 'No findings');
+    return {
+      patient_id: patient.id,
+      patient_name: patient.name,
+      visit_year: new Date().getFullYear().toString(),
+      visit_month: (new Date().getMonth() + 1).toString().padStart(2, '0'),
+      visit_day: new Date().getDate().toString().padStart(2, '0'),
+      doctor_name: "Dr. Medical", // In a real app, get from 'user' context
+      right_ear_eac: formatLesions(state.right.detailedFindings?.EAC),
+      left_ear_eac: formatLesions(state.left.detailedFindings?.EAC),
+      right_ear_tm: formatLesions(state.right.detailedFindings?.TM),
+      left_ear_tm: formatLesions(state.left.detailedFindings?.TM),
+      // Extract percentage if available from the first TM lesion (simplification for report)
+      right_tm_percent: state.right.detailedFindings?.TM?.[0]?.percentage?.toString() || "",
+      left_tm_percent: state.left.detailedFindings?.TM?.[0]?.percentage?.toString() || "",
+      diagnosis: state.sharedNotes || `${state.left.diagnosis} / ${state.right.diagnosis}`,
+      orders: lang === 'zh' ? "建議兩週後回診追蹤。" : "Follow up in 2 weeks."
+    };
   };
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-[#020617] overflow-hidden">
-        
-        {/* --- Header --- */}
-        <div className="h-16 flex items-center justify-between px-6 bg-white dark:bg-[#0b1120] border-b border-slate-200 dark:border-slate-800 shrink-0 z-30">
-            <div className="flex items-center gap-4 min-w-0">
-                <Link to="/patients" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-500 transition-colors">
-                    <ArrowLeft size={18} />
-                </Link>
-                <div className="flex flex-col">
-                    <h1 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight truncate">{patient.name}</h1>
-                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        <span>{patient.id}</span>
-                        <span>•</span>
-                        <span className={patient.gender === 'Male' ? 'text-blue-500' : 'text-pink-500'}>
-                            {patient.gender === 'Male' ? (lang === 'zh' ? '男' : 'Male') : (lang === 'zh' ? '女' : 'Female')}
-                        </span>
-                    </div>
-                </div>
+
+      {/* --- Header --- */}
+      <div className="h-16 flex items-center justify-between px-6 bg-white dark:bg-[#0b1120] border-b border-slate-200 dark:border-slate-800 shrink-0 z-30">
+        <div className="flex items-center gap-4 min-w-0">
+          <Link to="/patients" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-500 transition-colors">
+            <ArrowLeft size={18} />
+          </Link>
+          <div className="flex flex-col">
+            <h1 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight truncate">{patient.name}</h1>
+            <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              <span>{patient.id}</span>
+              <span>•</span>
+              <span className={patient.gender === 'Male' ? 'text-blue-500' : 'text-pink-500'}>
+                {patient.gender === 'Male' ? (lang === 'zh' ? '男' : 'Male') : (lang === 'zh' ? '女' : 'Female')}
+              </span>
             </div>
-
-            {/* Actions (Global Lock & Report) */}
-            <div className="flex items-center gap-3">
-                {!isGlobalLocked && (
-                   <span className="text-[10px] font-bold text-amber-500 flex items-center gap-1 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded animate-pulse">
-                      <AlertTriangle size={10} /> 
-                      {lang === 'zh' ? '檢查完成後可生成報告' : 'Complete exam to report'}
-                   </span>
-                )}
-                
-                <button 
-                    onClick={handleToggleGlobalLock}
-                    className={`h-9 px-4 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 border ${
-                        isGlobalLocked
-                        ? 'bg-blue-600 text-white border-blue-500 hover:bg-blue-700 shadow-lg shadow-blue-500/20' // CHANGED TO BLUE
-                        : 'bg-green-600 text-white border-green-500 hover:bg-green-700 shadow-lg shadow-green-500/20'
-                    }`}
-                    title={isGlobalLocked ? (lang === 'zh' ? '點擊解鎖以編輯' : 'Click to unlock') : ''}
-                >
-                    {isGlobalLocked ? (
-                        <>
-                            <Lock size={14} /> 
-                            <span>{lang === 'zh' ? '已鎖定' : 'Locked'}</span>
-                        </>
-                    ) : (
-                        <>
-                            <CheckCircle2 size={14} />
-                            <span>{t.completeExam}</span>
-                        </>
-                    )}
-                </button>
-
-                <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1"></div>
-
-                {/* Direct Download Buttons - Visual match for screenshot */}
-                <div className={`flex items-center bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-all duration-300 ${!isGlobalLocked ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
-                    <button 
-                        onClick={() => handleDownload('word')} 
-                        disabled={!isGlobalLocked}
-                        className="px-4 py-2 flex items-center gap-2 text-[10px] font-black text-blue-600 dark:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-r border-slate-200 dark:border-slate-700 disabled:cursor-not-allowed"
-                    >
-                        <FileText size={14} /> WORD
-                    </button>
-                    <button 
-                        onClick={() => handleDownload('pdf')} 
-                        disabled={!isGlobalLocked}
-                        className="px-4 py-2 flex items-center gap-2 text-[10px] font-black text-red-600 dark:text-red-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:cursor-not-allowed"
-                    >
-                        <Download size={14} /> PDF
-                    </button>
-                </div>
-            </div>
+          </div>
         </div>
 
-        {/* --- Main Workspace (Responsive Grid Layout) --- */}
-        <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden">
-            
-            {/* Left Col: Media Console (5/12 on LG, Full height split on Mobile) */}
-            <div className="w-full h-[500px] lg:h-full lg:col-span-5 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 bg-black overflow-hidden relative shrink-0">
-                <MediaConsole 
-                    examData={currentExam}
-                    activeSide={state.activeSide}
-                    onSwitchSide={handleSwitchSide}
-                    lang={lang}
-                    onUpdate={(updates) => handleUpdateExam(updates)}
-                    onAiResult={(res) => dispatch({ type: 'SET_AI_RESULT', payload: res })}
-                    aiResult={state.aiResult}
-                    readOnly={isGlobalLocked}
-                />
-            </div>
+        {/* Actions (Global Lock & Report) */}
+        <div className="flex items-center gap-3">
+          {!isGlobalLocked && (
+            <span className="text-[10px] font-bold text-amber-500 flex items-center gap-1 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded animate-pulse">
+              <AlertTriangle size={10} />
+              {lang === 'zh' ? '檢查完成後可生成報告' : 'Complete exam to report'}
+            </span>
+          )}
 
-            {/* Right Col: Clinical Panel (7/12 on LG, remaining space on Mobile) */}
-            <div className="w-full flex-1 lg:h-full lg:col-span-7 flex flex-col bg-white dark:bg-[#0b1120] relative overflow-hidden">
-                <ClinicalPanel 
-                    leftExam={state.left}
-                    rightExam={state.right}
-                    activeSide={state.activeSide}
-                    onSwitchSide={handleSwitchSide}
-                    lang={lang}
-                    aiResult={state.aiResult}
-                    onUpdate={handleUpdateExam}
-                    sharedNotes={state.sharedNotes}
-                    onNotesChange={handleNotesChange}
-                    isLocked={isGlobalLocked}
-                />
-                
-                {/* Floating Assistant Dock */}
-                <SideAssistant 
-                    patient={patient}
-                    isOpen={true} // It handles its own collapsed state
-                    lang={lang}
-                    currentExam={currentExam}
-                    activeSide={state.activeSide}
-                />
-            </div>
+          <button
+            onClick={handleToggleGlobalLock}
+            className={`h-9 px-4 rounded-xl flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 border ${isGlobalLocked
+              ? 'bg-blue-600 text-white border-blue-500 hover:bg-blue-700 shadow-lg shadow-blue-500/20' // CHANGED TO BLUE
+              : 'bg-green-600 text-white border-green-500 hover:bg-green-700 shadow-lg shadow-green-500/20'
+              }`}
+            title={isGlobalLocked ? (lang === 'zh' ? '點擊解鎖以編輯' : 'Click to unlock') : ''}
+          >
+            {isGlobalLocked ? (
+              <>
+                <Lock size={14} />
+                <span>{lang === 'zh' ? '已鎖定' : 'Locked'}</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={14} />
+                <span>{t.completeExam}</span>
+              </>
+            )}
+          </button>
+
+          <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+          {/* Direct Download Buttons - Visual match for screenshot */}
+          <div className={`flex items-center bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-all duration-300 ${!isGlobalLocked ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+            <button
+              onClick={() => handleDownload('word')}
+              disabled={!isGlobalLocked}
+              className="px-4 py-2 flex items-center gap-2 text-[10px] font-black text-blue-600 dark:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-r border-slate-200 dark:border-slate-700 disabled:cursor-not-allowed"
+            >
+              <FileText size={14} /> WORD
+            </button>
+            <button
+              onClick={() => handleDownload('pdf')}
+              disabled={!isGlobalLocked}
+              className="px-4 py-2 flex items-center gap-2 text-[10px] font-black text-red-600 dark:text-red-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:cursor-not-allowed"
+            >
+              <Download size={14} /> PDF
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* --- Main Workspace (Responsive Grid Layout) --- */}
+      <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden">
+
+        {/* Left Col: Media Console (5/12 on LG, Full height split on Mobile) */}
+        <div className="w-full h-[500px] lg:h-full lg:col-span-5 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 bg-black overflow-hidden relative shrink-0">
+          <MediaConsole
+            examData={currentExam}
+            activeSide={state.activeSide}
+            onSwitchSide={handleSwitchSide}
+            lang={lang}
+            onUpdate={(updates) => handleUpdateExam(updates)}
+            onAiResult={(res) => dispatch({ type: 'SET_AI_RESULT', payload: res })}
+            aiResult={state.aiResult}
+            readOnly={isGlobalLocked}
+          />
+        </div>
+
+        {/* Right Col: Clinical Panel (7/12 on LG, remaining space on Mobile) */}
+        <div className="w-full flex-1 lg:h-full lg:col-span-7 flex flex-col bg-white dark:bg-[#0b1120] relative overflow-hidden">
+          <ClinicalPanel
+            leftExam={state.left}
+            rightExam={state.right}
+            activeSide={state.activeSide}
+            onSwitchSide={handleSwitchSide}
+            lang={lang}
+            aiResult={state.aiResult}
+            onUpdate={handleUpdateExam}
+            sharedNotes={state.sharedNotes}
+            onNotesChange={handleNotesChange}
+            isLocked={isGlobalLocked}
+          />
+
+          {/* Floating Assistant Dock */}
+          <SideAssistant
+            patient={patient}
+            isOpen={true} // It handles its own collapsed state
+            lang={lang}
+            currentExam={currentExam}
+            activeSide={state.activeSide}
+          />
+        </div>
+      </div>
     </div>
   );
 };

@@ -132,6 +132,30 @@ export interface ApiErrorResponse {
   where?: string;
 }
 
+
+/**
+ * 新增診斷相關型別 (Type Definitions)
+ */
+export interface FindingItem {
+  label: string;      // 疾病名稱 (如: "Otitis media")
+  region: 'EAC' | 'TM'; // 部位 (外耳道/中耳)
+  confidence: number; // 信心度 (0-100)
+  source: 'AI' | 'DOCTOR'; // 來源
+}
+
+export interface ExamRecordItem {
+  side: 'LEFT' | 'RIGHT';
+  image_url?: string;
+  findings: FindingItem[];
+}
+
+export interface DiagnosisSavePayload {
+  doctor_id?: string;
+  records: ExamRecordItem[];
+}
+
+
+
 // ==========================================================
 // API 基礎配置
 // ==========================================================
@@ -854,20 +878,68 @@ export const fetchPatients = async (skip: number = 0, limit: number = 100): Prom
     // Map backend DB model to frontend Patient interface
     // Note: Backend might return slightly different fields, we need to map them.
     // Based on models_sql.py: id, medical_record_number, name, gender, birth_date
-    return data.map((p: any) => ({
-      id: p.medical_record_number, // User frontend uses string ID, backend has int ID and MRN. Let's use MRN as frontend ID for now? Or keep string ID.
-      // Frontend expects ID like "IEAR-LM-..." which corresponds to medical_record_number in SQL
-      dbId: p.id, // Keep internal DB ID if needed
-      name: p.name,
-      gender: p.gender,
-      age: p.birth_date ? new Date().getFullYear() - new Date(p.birth_date).getFullYear() : 0,
-      visitDate: p.created_at ? p.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-      diagnosis: "Loading...", // Case specific
-      status: "Stable", // Default
-      imageUrl: "https://picsum.photos/200", // Placeholder
-      notes: "",
-      exams: { left: { status: 'pending' }, right: { status: 'pending' } } // Placeholder
-    }));
+    return data.map((p: any) => {
+      // Find the latest case (assuming backend returns them, or sorting here)
+      const latestCase = p.cases && p.cases.length > 0 ? p.cases.sort((a: any, b: any) => {
+        const dateDiff = new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime();
+        if (dateDiff !== 0) return dateDiff;
+        // Tie-breaker: created_at (newer is better)
+        const createdA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const createdB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return createdB - createdA;
+      })[0] : null;
+
+      // Map exams from the latest case
+      let leftExam: any = { status: 'pending', diagnosis: '', notes: '', detailedFindings: { EAC: [], TM: [] } };
+      let rightExam: any = { status: 'pending', diagnosis: '', notes: '', detailedFindings: { EAC: [], TM: [] } };
+
+      if (latestCase && latestCase.exams) {
+        latestCase.exams.forEach((ex: any) => {
+          const side = ex.side.toLowerCase();
+          const mappedFindings = { EAC: [], TM: [] };
+
+          if (ex.findings) {
+            ex.findings.forEach((f: any) => {
+              const lesion = {
+                region: f.region,
+                code: f.code,
+                label_zh: f.label_zh,
+                label_en: f.label_en,
+                is_normal: f.is_normal,
+                percentage: f.percentage
+              };
+              if (f.region === 'EAC') mappedFindings.EAC.push(lesion);
+              if (f.region === 'TM') mappedFindings.TM.push(lesion);
+            });
+          }
+
+          const examData = {
+            status: ex.status || 'pending',
+            diagnosis: ex.diagnosis || '',
+            notes: ex.notes || '',
+            imageUrl: ex.image_path, // Map backend image_path to frontend imageUrl
+            detailedFindings: mappedFindings
+          };
+
+          if (side === 'left') leftExam = { ...leftExam, ...examData };
+          if (side === 'right') rightExam = { ...rightExam, ...examData };
+        });
+      }
+
+      return {
+        id: p.medical_record_number,
+        dbId: p.id,
+        name: p.name,
+        gender: p.gender,
+        age: p.birth_date ? new Date().getFullYear() - new Date(p.birth_date).getFullYear() : 0,
+        visitDate: latestCase ? latestCase.visit_date : (p.created_at ? p.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+        diagnosis: latestCase ? latestCase.diagnosis_summary : "New Patient",
+        status: latestCase ? latestCase.status : "Stable",
+        imageUrl: latestCase?.image_url || "https://picsum.photos/200",
+        notes: latestCase?.general_notes || "",
+        exams: { left: leftExam, right: rightExam }
+      };
+    });
   } catch (error) {
     console.error('[Patient API] error:', error);
     return []; // Return empty on error to avoid crash
@@ -1006,5 +1078,104 @@ export const getKBStats = async (): Promise<{ points_count: number, vector_size:
       throw error;
     }
     throw new Error('獲取統計信息失敗：未知錯誤');
+  }
+};
+
+// ==========================================================
+// 病歷與病灶管理 API
+// ==========================================================
+
+export interface FindingCreate {
+  region: string; // 'EAC' or 'TM'
+  code: string;
+  label_zh: string;
+  label_en: string;
+  is_normal: boolean;
+  percentage: number;
+}
+
+export interface ExamRecordCreate {
+  side: string; // 'left' or 'right'
+  status: string; // 'pending'
+  diagnosis?: string;
+  image_path?: string;
+  notes?: string;
+  findings: FindingCreate[];
+}
+
+export interface CreateCaseRequest {
+  patient_id: number;
+  visit_date: string; // YYYY-MM-DD
+  diagnosis_summary?: string;
+  general_notes?: string;
+  exams: ExamRecordCreate[];
+  doctor_id?: number;
+}
+
+/**
+ * 創建完整病歷（包含 ExamRecord 和 Findings）
+ */
+export const createMedicalCase = async (data: CreateCaseRequest): Promise<any> => {
+  const apiUrl = `${RAG_API_BASE_URL}/api/v1/cases`;
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: '創建病歷失敗' }));
+      throw new Error(error.detail || '創建病歷失敗');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("CreateCase Error:", error);
+    throw error;
+  }
+};
+
+
+// ==========================================================
+// SQL API 呼叫函式
+// ==========================================================
+
+/**
+ * 儲存/更新 診斷結果
+ * @param caseId - 病歷號 (MedicalCase ID)
+ * @param data - 完整的診斷資料包
+ */
+export const saveDiagnosis = async (caseId: string, data: DiagnosisSavePayload): Promise<void> => {
+  // 假設 RAG_API_BASE_URL 指向您的後端 (Port 9000)
+  const apiUrl = `${RAG_API_BASE_URL}/api/v1/cases/${caseId}/diagnosis`;
+
+  console.log('[Diagnosis API] Saving...', { caseId, records: data.records.length });
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMsg = `儲存失敗 (${response.status})`;
+      try {
+        const errJson = JSON.parse(errorText);
+        errorMsg = errJson.detail || errorMsg;
+      } catch (e) { }
+      throw new Error(errorMsg);
+    }
+
+    const result = await response.json();
+    console.log('[Diagnosis API] Save success:', result);
+  } catch (error) {
+    console.error('[Diagnosis API] Request failed:', error);
+    throw error;
   }
 };

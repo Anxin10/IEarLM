@@ -10,7 +10,7 @@ from pdf_utils import extract_pdf_text, chunk_text
 from report_generator import ReportGenerator
 from ear_disease_classifier import process_detections
 from datetime import datetime
-from typing import Optional
+from typing import List,Optional
 import sys
 import traceback
 import os
@@ -23,7 +23,7 @@ from database import get_db, engine
 from sqlmodel import SQLModel
 import crud
 from models_sql import Patient, MedicalCase 
-from sqlalchemy import select, exc
+from sqlalchemy import select, exc, delete
 import models_sql
 #JX新增
 # Duplicate app initialization removed
@@ -32,7 +32,28 @@ from pydantic import BaseModel
 class DeleteRequest(BaseModel):
     id: int
 
+# 1. 定義更新請求的資料結構
+# 這邊要接收前端傳來的：資料庫ID、姓名、性別、出生日期
+class UpdatePatientRequest(BaseModel):
+    id: int
+    name: str
+    gender: str
+    birth_date: str  # 接收字串，稍後再手動轉成 date 物件
 
+class FindingItem(BaseModel):
+    label: str          # 疾病名稱 (如: Otitis media)
+    region: str         # 部位: 'EAC' 或 'TM'
+    confidence: float   # 信心度: 85.5
+    source: str = "DOCTOR" # 來源: 'AI' 或 'DOCTOR'
+
+class ExamRecordItem(BaseModel):
+    side: str           # 'LEFT' 或 'RIGHT'
+    image_url: Optional[str] = None
+    findings: List[FindingItem] = []
+
+class DiagnosisSaveRequest(BaseModel):
+    doctor_id: Optional[str] = None
+    records: List[ExamRecordItem] # 包含左耳和右耳的資料陣列
 
 sys.stdout.reconfigure(encoding='utf-8') # type: ignore
 
@@ -743,26 +764,63 @@ async def get_dashboard_stats_api(db: AsyncSession = Depends(get_db)):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/v1/patients")
+from models_sql import Patient, MedicalCase, ExamRecord, Finding, Segmentation, PatientStatus, PatientRead
+
+# ...
+
+#L新增
+# 獲取所有病患資料=======================================
+@app.get("/api/v1/patients", response_model=List[PatientRead])
 async def read_patients(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
     patients = await crud.get_patients(db, skip=skip, limit=limit)
     return patients
 
-#JX新增
-@app.get("/api/v1/patients/{patient_id}")
+#L新增
+# 獲取單一病患資料=======================================
+@app.get("/api/v1/patients/{patient_id}", response_model=PatientRead)
 async def read_single_patient(patient_id: int, db: AsyncSession = Depends(get_db)):
     """
     獲取單一病患資料
     """
     # 從資料庫撈出指定 ID 的那個人
-    result = await db.execute(select(Patient).where(Patient.id == patient_id))
-    patient = result.scalars().first()
+    patient = await crud.get_patient(db, patient_id) # Using crud.get_patient which eager loads
 
     if patient is None:
         raise HTTPException(status_code=404, detail="找不到該病患")
     
     return patient
 
+#L新增
+# 編輯病患資料=======================================
+@app.put("/api/v1/patients")
+async def update_patient_api(item: UpdatePatientRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        # 轉換日期
+        bdate = datetime.strptime(item.birth_date, "%Y-%m-%d").date()
+        
+        # 找人
+        result = await db.execute(select(Patient).where(Patient.id == item.id))
+        patient = result.scalars().first()
+
+        if not patient:
+            raise HTTPException(status_code=404, detail="找不到該病患")
+
+        # 更新
+        patient.name = item.name
+        patient.gender = item.gender
+        patient.birth_date = bdate
+        
+        await db.commit()
+        return {"status": "success", "message": "更新成功"}
+
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日期格式錯誤")
+    except Exception as e:
+        await db.rollback()
+        print(f"Update Error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    
+# 新增病患資料=======================================
 @app.post("/api/v1/patients")
 async def create_patient_api(
     name: str, 
@@ -793,7 +851,7 @@ async def read_cases(skip: int = 0, limit: int = 100, db: AsyncSession = Depends
     # For now, let FastAPI try to serialize.
     return cases
 
-#JX新增 
+#L新增 刪除病患資料=======================================
 @app.delete("/api/v1/patients")
 async def delete_patient_by_body(
     item: DeleteRequest,       # 接收前端的 JSON: {"id": 5}
@@ -813,18 +871,113 @@ async def delete_patient_by_body(
     
     return {"status": "success"}
 
+from models import (
+    AskRequest, AskResponse, IngestRequest, DeleteRequest, 
+    ReportRequest, SaveRequest, ReportContentResponse, 
+    UpdateReportContentRequest, CleanupResponse,
+    FolderCreateRequest, FolderUpdateRequest, FileMoveRequest,
+    CreateCaseRequest # JX新增
+)
+
+# ... (existing imports)
+
+#JX新增    新增病患資料=======================================
 @app.post("/api/v1/cases")
 async def create_case_api(
-    case_data: dict, # Receive raw dict for now
-    patient_id: int,
+    case_data: CreateCaseRequest, # Use Pydantic model for validation
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        return await crud.create_case(db, case_data, patient_id)
+        # Convert Pydantic model to dict for crud
+        return await crud.create_case(db, case_data.dict(), case_data.patient_id)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        import traceback
+        with open("error_log.txt", "w") as f:
+            f.write(str(e) + "\n")
+            f.write(traceback.format_exc())
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"Server Error: {str(e)}")
+
+
+@app.put("/api/v1/cases/{case_id}")
+async def update_case_api(
+    case_id: str,
+    case_data: CreateCaseRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        updated_case = await crud.update_case(db, case_id, case_data.dict())
+        if not updated_case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        return updated_case
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"Update failed: {str(e)}")
+
+# L新增 儲存診斷結果 (對應 frontend saveDiagnosis)
+@app.post("/api/v1/cases/{case_id}/diagnosis")
+async def save_diagnosis_api(
+    case_id: str,
+    payload: DiagnosisSaveRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        # 1. 轉換 DiagnosisSaveRequest -> 用於 crud.update_case 的 dict 結構
+        # 因為 saveDiagnosis 只傳 Exams/Findings，我們需要保留其他 Case 欄位不變
+        # 但 crud.update_case 只更新傳入的欄位 (除了 exams 是全量替換)
+        
+        # 構建 exams list
+        exams_data = []
+        for record in payload.records:
+            findings_data = []
+            for f in record.findings:
+                # 簡易判斷 is_normal
+                is_normal_flag = (f.label.lower() == "normal" or f.label == "正常")
+                
+                findings_data.append({
+                    "region": f.region,
+                    "code": "", # 前端未傳
+                    "label_zh": f.label, # 假設前端傳來的是顯示用的標籤 (通常是中文)
+                    "label_en": f.label, # 暫時重複填寫
+                    "is_normal": is_normal_flag,
+                    "percentage": f.confidence
+                })
+            
+            exams_data.append({
+                "side": record.side.lower(), # LEFT -> left
+                "status": "completed", # 既然儲存了診斷，狀態設為 completed
+                "diagnosis": "", # 或許可以從 findings 聚合，這裡先留白
+                "image_path": record.image_url,
+                "notes": "",
+                "findings": findings_data
+            })
+            
+        update_data = {
+            "doctor_id": payload.doctor_id,
+            "exams": exams_data
+        }
+        
+        # 移除 None 值 (doctor_id 可能為 None)
+        if update_data["doctor_id"] is None:
+            del update_data["doctor_id"]
+
+        # 2. 呼叫 update_case
+        updated_case = await crud.update_case(db, case_id, update_data)
+        
+        if not updated_case:
+            raise HTTPException(status_code=404, detail="Case not found")
+            
+        return {"status": "success", "message": "Diagnosis saved", "case_id": updated_case.id}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"Save diagnosis failed: {str(e)}")
+
+
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9000)
+    uvicorn.run("app:app", host="0.0.0.0", port=9000, reload=True)
