@@ -69,3 +69,5 @@ web-server/
 
 - [YOLOv7 API 文檔](backend/api-server-yolov7seg/docs/API.md) - 圖像檢測 API
 - [RAG API 文檔](backend/api-server-ollama2rag/docs/API.md) - 知識庫問答 API（詳細端點說明）
+- [SQL 資料庫架構](docs/SQL_SCHEMA.md) - 詳細資料表定義與 ER 圖
+
