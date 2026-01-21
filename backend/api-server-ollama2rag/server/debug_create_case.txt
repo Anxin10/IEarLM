@@ -16,3 +16,30 @@
     Findings content: [{'region': 'TM', 'code': 'TM_OTITIS_MEDIA', 'label_zh': '中耳炎', 'label_en': 'Otitis media', 'is_normal': False, 'percentage': 1.0}, {'region': 'TM', 'code': 'TM_MIDDLE_EAR_EFFUSION', 'label_zh': '中耳積水', 'label_en': 'Middle ear effusion', 'is_normal': False, 'percentage': 0.0}]
     Exam 1 (right): 2 findings.
     Findings content: [{'region': 'TM', 'code': 'TM_EARDRUM_PERFORATION', 'label_zh': '耳膜破洞', 'label_en': 'Eardrum perforation', 'is_normal': False, 'percentage': 68.0}, {'region': 'TM', 'code': 'TM_TYMPANOSCLEROSIS', 'label_zh': '耳膜硬化', 'label_en': 'Tympanosclerosis', 'is_normal': False, 'percentage': 2.0}]
+
+[2026-01-21 20:53:29.854678] [DEBUG] create_case called.
+  patient_id: 11
+  case_data keys: ['patient_id', 'visit_date', 'diagnosis_summary', 'general_notes', 'exams', 'doctor_id']
+  exams count: 2
+    Exam 0 (left): 2 findings.
+    Findings content: [{'region': 'TM', 'code': 'TM_OTITIS_MEDIA', 'label_zh': '中耳炎', 'label_en': 'Otitis media', 'is_normal': False, 'percentage': 1.0}, {'region': 'TM', 'code': 'TM_MIDDLE_EAR_EFFUSION', 'label_zh': '中耳積水', 'label_en': 'Middle ear effusion', 'is_normal': False, 'percentage': 0.0}]
+    Exam 1 (right): 3 findings.
+    Findings content: [{'region': 'TM', 'code': 'TM_EARDRUM_PERFORATION', 'label_zh': '耳膜破洞', 'label_en': 'Eardrum perforation', 'is_normal': False, 'percentage': 68.0}, {'region': 'TM', 'code': 'TM_TYMPANOSCLEROSIS', 'label_zh': '耳膜硬化', 'label_en': 'Tympanosclerosis', 'is_normal': False, 'percentage': 2.0}, {'region': 'TM', 'code': 'TM_OTITIS_MEDIA', 'label_zh': '中耳炎', 'label_en': 'Otitis media', 'is_normal': False, 'percentage': 0.0}]
+
+[2026-01-21 20:53:41.188753] [DEBUG] create_case called.
+  patient_id: 11
+  case_data keys: ['patient_id', 'visit_date', 'diagnosis_summary', 'general_notes', 'exams', 'doctor_id']
+  exams count: 2
+    Exam 0 (left): 2 findings.
+    Findings content: [{'region': 'TM', 'code': 'TM_OTITIS_MEDIA', 'label_zh': '中耳炎', 'label_en': 'Otitis media', 'is_normal': False, 'percentage': 1.0}, {'region': 'TM', 'code': 'TM_MIDDLE_EAR_EFFUSION', 'label_zh': '中耳積水', 'label_en': 'Middle ear effusion', 'is_normal': False, 'percentage': 0.0}]
+    Exam 1 (right): 3 findings.
+    Findings content: [{'region': 'TM', 'code': 'TM_EARDRUM_PERFORATION', 'label_zh': '耳膜破洞', 'label_en': 'Eardrum perforation', 'is_normal': False, 'percentage': 68.0}, {'region': 'TM', 'code': 'TM_TYMPANOSCLEROSIS', 'label_zh': '耳膜硬化', 'label_en': 'Tympanosclerosis', 'is_normal': False, 'percentage': 2.0}, {'region': 'TM', 'code': 'TM_OTITIS_MEDIA', 'label_zh': '中耳炎', 'label_en': 'Otitis media', 'is_normal': False, 'percentage': 23.0}]
+
+[2026-01-21 21:46:32.189853] [DEBUG] create_case called.
+  patient_id: 11
+  case_data keys: ['patient_id', 'visit_date', 'diagnosis_summary', 'general_notes', 'exams', 'doctor_id']
+  exams count: 2
+    Exam 0 (left): 2 findings.
+    Findings content: [{'region': 'TM', 'code': 'TM_OTITIS_MEDIA', 'label_zh': '中耳炎', 'label_en': 'Otitis media', 'is_normal': False, 'percentage': 1.0}, {'region': 'TM', 'code': 'TM_MIDDLE_EAR_EFFUSION', 'label_zh': '中耳積水', 'label_en': 'Middle ear effusion', 'is_normal': False, 'percentage': 0.0}]
+    Exam 1 (right): 3 findings.
+    Findings content: [{'region': 'TM', 'code': 'TM_EARDRUM_PERFORATION', 'label_zh': '耳膜破洞', 'label_en': 'Eardrum perforation', 'is_normal': False, 'percentage': 68.0}, {'region': 'TM', 'code': 'TM_TYMPANOSCLEROSIS', 'label_zh': '耳膜硬化', 'label_en': 'Tympanosclerosis', 'is_normal': False, 'percentage': 2.0}, {'region': 'TM', 'code': 'TM_OTITIS_MEDIA', 'label_zh': '中耳炎', 'label_en': 'Otitis media', 'is_normal': False, 'percentage': 23.0}]

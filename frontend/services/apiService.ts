@@ -189,14 +189,37 @@ const RAG_API_BASE_URL = getRagApiBaseUrl();
  * @param iou_thres - IoU 閾值（默認 0.45）
  * @returns Promise<EarDetectionResult> - 檢測結果
  */
+// Helper to convert base64 to Blob
+const dataURLtoBlob = (dataurl: string): Blob => {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+};
+
 export const analyzeEarImage = async (
-  imageFile: File,
+  imageInput: File | string,
   conf_thres: number = 0.25,
   iou_thres: number = 0.45
 ): Promise<EarDetectionResult> => {
   try {
     const formData = new FormData();
-    formData.append('image', imageFile);
+
+    if (imageInput instanceof File) {
+      formData.append('image', imageInput);
+    } else if (typeof imageInput === 'string') {
+      // Assuming Request is base64 data URL
+      const blob = dataURLtoBlob(imageInput);
+      formData.append('image', blob, 'capture.png');
+    } else {
+      throw new Error('Invalid image input type');
+    }
+
     formData.append('conf_thres', conf_thres.toString());
     formData.append('iou_thres', iou_thres.toString());
 

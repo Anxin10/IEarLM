@@ -3,12 +3,82 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { EarExamRecord, EarSide, Language } from '../../types';
 import { translations } from '../../services/translations';
-import { 
-    Video, CloudUpload, Sparkles, Loader2, Trash2, Camera, 
+import { analyzeEarImage } from '../../services/apiService';
+import {
+    Video, CloudUpload, Sparkles, Loader2, Trash2, Camera,
     Ear, ScanEye, VideoOff, WifiOff, RefreshCw
 } from 'lucide-react';
-import { AIResult } from '../AIDiagnosisForm';
+import { AIResult, AIFinding } from '../AIDiagnosisForm';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// --- MAPPING LOGIC ---
+const BACKEND_TO_FRONTEND_CODE_MAP: Record<string, string> = {
+    // TM
+    'Otitis media': 'TM_OTITIS_MEDIA',
+    'AOM': 'TM_OTITIS_MEDIA',
+    'OME': 'TM_MIDDLE_EAR_EFFUSION',
+    'Middle ear effusion': 'TM_MIDDLE_EAR_EFFUSION',
+    'Perforation': 'TM_EARDRUM_PERFORATION',
+    'Eardrum perforation': 'TM_EARDRUM_PERFORATION',
+    'Myringitis': 'TM_MYRINGITIS',
+    'Tympanosclerosis': 'TM_TYMPANOSCLEROSIS',
+    'Retraction': 'TM_RETRACTION',
+    'Atrophic scar': 'TM_ATROPHIC_SCAR',
+    'Tumor': 'TM_MIDDLE_EAR_TUMOR',
+    'Ventilation tube': 'TM_VENTILATION_TUBE',
+    'Grommet': 'TM_VENTILATION_TUBE',
+    'Tympanoplasty': 'TM_TYMPANOPLASTY',
+
+    // EAC
+    'Cerumen': 'EAC_CERUMEN',
+    'Impacted cerumen': 'EAC_CERUMEN',
+    'Otitis externa': 'EAC_OTITIS_EXTERNA',
+    'Otomycosis': 'EAC_OTOMYCOSIS',
+    'Foreign body': 'EAC_FOREIGN_BODY',
+    'Blood clot': 'EAC_BLOOD_CLOT',
+    'Atresia': 'EAC_ATRESIA',
+    'EAC Tumor': 'EAC_TUMOR'
+};
+
+const mapApiToUiResult = (apiResult: any, side: EarSide): AIResult => {
+    // Helper to map a list of API detections to UI Findings
+    const mapDetections = (detections: any[]): AIFinding[] => {
+        return detections
+            .map(d => {
+                // Try to find a code match based on English class name
+                // Checking raw class, normalized class, or class_name_en
+                const key = d.class || d.class_name_en || d.normalized_class;
+                const code = BACKEND_TO_FRONTEND_CODE_MAP[key] || BACKEND_TO_FRONTEND_CODE_MAP[d.class_name_en];
+
+                if (!code) return null; // Skip unknown classes (e.g. Normal)
+
+                return {
+                    code: code,
+                    label_zh: d.class_name_zh || d.class,
+                    label_en: d.class_name_en || d.class,
+                    confidence: d.confidence
+                };
+            })
+            .filter((f): f is AIFinding => f !== null);
+    };
+
+    return {
+        ear_side: side === 'left' ? 'LEFT' : 'RIGHT',
+        ai_status: 'SUCCESS',
+        model_version: 'v2.0-yolo',
+        timestamp: Date.now(),
+        region_results: {
+            EAC: {
+                findings: mapDetections(apiResult.eac_detections || []),
+                needs_review: false
+            },
+            TM: {
+                findings: mapDetections(apiResult.tm_detections || []),
+                needs_review: false
+            }
+        }
+    };
+};
 
 interface MediaConsoleProps {
     examData: EarExamRecord;
@@ -42,10 +112,10 @@ const ActionTooltip = ({ content, children, side = 'bottom' }: { content: string
             {children}
             {isVisible && createPortal(
                 <div className={`fixed z-[9999] -translate-x-1/2 px-2 pointer-events-none ${side === 'top' ? '-translate-y-full' : ''}`} style={{ top: coords.top, left: coords.left }}>
-                    <motion.div 
-                        initial={{ opacity: 0, y: side === 'top' ? 5 : -5, scale: 0.9 }} 
-                        animate={{ opacity: 1, y: 0, scale: 1 }} 
-                        exit={{ opacity: 0, scale: 0.9 }} 
+                    <motion.div
+                        initial={{ opacity: 0, y: side === 'top' ? 5 : -5, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
                         className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase tracking-widest py-2 px-3 rounded-xl shadow-xl relative whitespace-nowrap"
                     >
                         {content}
@@ -57,15 +127,15 @@ const ActionTooltip = ({ content, children, side = 'bottom' }: { content: string
     );
 };
 
-export const MediaConsole: React.FC<MediaConsoleProps> = ({ 
-    examData, activeSide, onSwitchSide, lang, 
-    onUpdate, onAiResult, aiResult, readOnly 
+export const MediaConsole: React.FC<MediaConsoleProps> = ({
+    examData, activeSide, onSwitchSide, lang,
+    onUpdate, onAiResult, aiResult, readOnly
 }) => {
     const t = (translations[lang] as any);
     const [isStreaming, setIsStreaming] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [showSegmentation, setShowSegmentation] = useState(false);
-    
+
     // Connection State Steps: 0:Idle, 1:Connecting, 2:Failed, 3:Reconnecting, 4:Connected
     const [connectionStep, setConnectionStep] = useState<0 | 1 | 2 | 3 | 4>(0);
     const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -95,11 +165,11 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
     };
 
     // Reset when side changes
-    useEffect(() => { 
-        setIsStreaming(false); 
+    useEffect(() => {
+        setIsStreaming(false);
         setConnectionStep(0);
         clearAllTimers();
-        setShowSegmentation(false); 
+        setShowSegmentation(false);
     }, [activeSide]);
 
     // Auto-enable mask if AI result comes in
@@ -127,29 +197,29 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
     const handleDeleteImage = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        
+
         if (readOnly || isGenerating) return;
         if (!examData.imageUrl) return;
 
-        const confirmMsg = lang === 'zh' 
-            ? '確定要移除此影像嗎？這將會一併重置此耳的診斷與標記，回復至「未檢查」狀態。' 
+        const confirmMsg = lang === 'zh'
+            ? '確定要移除此影像嗎？這將會一併重置此耳的診斷與標記，回復至「未檢查」狀態。'
             : 'Remove this image? This will reset diagnosis and findings, reverting to "Pending" status.';
 
         if (window.confirm(confirmMsg)) {
             // FIX: Explicitly send null for imageUrl to ensure it overrides any previous string value
             // Also reset findings and status to ensure consistency.
-            onUpdate({ 
-                imageUrl: null, 
+            onUpdate({
+                imageUrl: null,
                 segmentationData: [],
                 detailedFindings: { EAC: [], TM: [] }, // Clear findings
                 diagnosis: '', // Clear summary
                 status: 'pending' // Reset status
             });
-            
+
             // Clear local component state
             onAiResult(null);
             setShowSegmentation(false);
-            
+
             // Reset file input
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
@@ -165,7 +235,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
                 onAiResult(null);
                 setShowSegmentation(false);
                 onUpdate({ imageUrl: ev.target.result as string, status: 'draft' });
-                setIsStreaming(false); 
+                setIsStreaming(false);
                 setConnectionStep(0);
                 clearAllTimers();
                 if (fileInputRef.current) {
@@ -185,7 +255,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
         } else {
             // If image exists, must delete first (enforced by disabled prop, but safety check here)
             if (examData.imageUrl) {
-               return;
+                return;
             }
             onAiResult(null);
             setShowSegmentation(false);
@@ -194,24 +264,29 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
         }
     };
 
-    const handleAIDetect = () => {
+    const handleAIDetect = async () => {
         if (readOnly || !examData.imageUrl) return;
         setIsGenerating(true);
-        // Simulate API call
-        setTimeout(() => {
-            const mockResult: AIResult = {
-                ear_side: activeSide === 'left' ? 'LEFT' : 'RIGHT',
-                ai_status: 'SUCCESS',
-                model_version: 'v2.0-mock',
-                timestamp: Date.now(),
-                region_results: {
-                    EAC: { findings: [], needs_review: false },
-                    TM: { findings: [{ code: 'TM_OTITIS_MEDIA', label_zh: '中耳炎', label_en: 'Otitis Media', confidence: 0.95 }], needs_review: false }
-                }
-            };
-            onAiResult(mockResult);
+
+        try {
+            // Call real backend API
+            // Note: analyzeEarImage(image, conf_thres, iou_thres)
+            // We only pass image here, using default thresholds.
+            // activeSide is not sent to backend for analysis (backend analyzes the image itself)
+            const result = await analyzeEarImage(examData.imageUrl);
+
+            // Map the API result structure to the UI structure expected by AIDiagnosisForm
+            const uiResult = mapApiToUiResult(result, activeSide);
+
+            // The backend returns the result, we need to pass it to the parent component
+            onAiResult(uiResult);
+        } catch (error) {
+            console.error("AI Detection failed:", error);
+            alert(lang === 'zh' ? "AI 檢測失敗，請檢查後端連線" : "AI Detection failed, please check backend connection");
+            onAiResult(null);
+        } finally {
             setIsGenerating(false);
-        }, 1500);
+        }
     };
 
     // Shared UI style
@@ -221,23 +296,23 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
 
     return (
         <div className="flex flex-col h-full bg-slate-50 dark:bg-[#020617] relative group overflow-hidden">
-            
+
             {/* 1. Main Viewport */}
             <div className="flex-1 relative flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-[#020617]">
-                
+
                 {/* Floating Controls Layer */}
                 <div className="absolute inset-0 pointer-events-none z-40">
                     <AnimatePresence>
                         {/* Top Left: Ear Switcher */}
                         {!isStreaming && (
-                            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className={`absolute top-4 left-4 pointer-events-auto flex ${UIContainerStyle}`}>
-                                <button 
+                            <motion.div key="ear-switcher" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className={`absolute top-4 left-4 pointer-events-auto flex ${UIContainerStyle}`}>
+                                <button
                                     onClick={() => onSwitchSide('left')}
                                     className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 ${activeSide === 'left' ? UIButtonActive : UIButtonIdle}`}
                                 >
                                     <Ear size={14} className="-scale-x-100" /> {t.leftEar}
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => onSwitchSide('right')}
                                     className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 ${activeSide === 'right' ? UIButtonActive : UIButtonIdle}`}
                                 >
@@ -248,33 +323,31 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
 
                         {/* Top Right: Mask & Delete */}
                         {examData.imageUrl && (
-                            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className={`absolute top-4 right-4 pointer-events-auto flex flex-row gap-2 ${UIContainerStyle}`}>
+                            <motion.div key="image-controls" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className={`absolute top-4 right-4 pointer-events-auto flex flex-row gap-2 ${UIContainerStyle}`}>
                                 <ActionTooltip content={!aiResult ? t.notAnalyzed : (showSegmentation ? t.disableMask : t.enableMask)}>
-                                    <button 
+                                    <button
                                         onClick={() => aiResult && setShowSegmentation(!showSegmentation)}
                                         disabled={!aiResult}
-                                        className={`p-3 rounded-xl transition-all flex items-center justify-center disabled:opacity-100 ${
-                                            !aiResult 
-                                                ? 'text-slate-400 cursor-not-allowed' 
-                                                : showSegmentation 
-                                                    ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-                                                    : 'text-slate-400 hover:text-blue-500'
-                                        }`}
+                                        className={`p-3 rounded-xl transition-all flex items-center justify-center disabled:opacity-100 ${!aiResult
+                                            ? 'text-slate-400 cursor-not-allowed'
+                                            : showSegmentation
+                                                ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                                : 'text-slate-400 hover:text-blue-500'
+                                            }`}
                                     >
                                         <ScanEye size={18} />
                                     </button>
                                 </ActionTooltip>
-                                
+
                                 {/* DELETE BUTTON - Correctly configured */}
                                 <ActionTooltip content={readOnly ? (lang === 'zh' ? '唯讀模式無法刪除' : 'Action disabled in Read-Only') : (isGenerating ? t.processing : t.deleteImage)}>
-                                    <button 
+                                    <button
                                         onClick={handleDeleteImage}
                                         disabled={isGenerating || readOnly}
-                                        className={`p-3 rounded-xl transition-all flex items-center justify-center disabled:opacity-100 ${
-                                            (isGenerating || readOnly)
-                                            ? 'text-slate-400 cursor-not-allowed opacity-50' 
+                                        className={`p-3 rounded-xl transition-all flex items-center justify-center disabled:opacity-100 ${(isGenerating || readOnly)
+                                            ? 'text-slate-400 cursor-not-allowed opacity-50'
                                             : 'text-slate-400 hover:text-red-600 hover:bg-red-500/10'
-                                        }`}
+                                            }`}
                                     >
                                         <Trash2 size={18} />
                                     </button>
@@ -287,16 +360,16 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
                 {examData.imageUrl ? (
                     <div className="relative w-full h-full flex items-center justify-center bg-slate-50 dark:bg-black">
                         <img src={examData.imageUrl} alt="Exam" className="w-full h-full object-contain" />
-                        
+
                         {/* AI Mask Overlay */}
                         {showSegmentation && aiResult && (
-                             <div className="absolute inset-0 pointer-events-none z-10 animate-in fade-in duration-500">
+                            <div className="absolute inset-0 pointer-events-none z-10 animate-in fade-in duration-500">
                                 <svg viewBox="0 0 800 600" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
-                                    <path d="M 350 220 Q 450 170 550 220 T 600 350 T 450 420 T 250 350 T 350 220 Z" 
-                                          fill="rgba(239, 68, 68, 0.2)" 
-                                          stroke="rgba(239, 68, 68, 0.8)" 
-                                          strokeWidth="2" 
-                                          style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }} 
+                                    <path d="M 350 220 Q 450 170 550 220 T 600 350 T 450 420 T 250 350 T 350 220 Z"
+                                        fill="rgba(239, 68, 68, 0.2)"
+                                        stroke="rgba(239, 68, 68, 0.8)"
+                                        strokeWidth="2"
+                                        style={{ filter: 'drop-shadow(0 0 4px rgba(239, 68, 68, 0.6))' }}
                                     />
                                 </svg>
                             </div>
@@ -312,7 +385,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
                 ) : isStreaming ? (
                     // Solid black background for streaming
                     <div className="absolute inset-0 w-full h-full z-20 flex items-center justify-center overflow-hidden" style={{ backgroundColor: 'black' }}>
-                        
+
                         {/* Step 1 & 3: Connecting */}
                         {(connectionStep === 1 || connectionStep === 3) && (
                             <div className="flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-300">
@@ -359,7 +432,7 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
                 ) : (
                     <div className="flex flex-col items-center justify-center text-slate-500 gap-6">
                         <div className="w-24 h-24 rounded-3xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-sm">
-                             <Camera size={32} className="opacity-30 text-slate-400" />
+                            <Camera size={32} className="opacity-30 text-slate-400" />
                         </div>
                         <p className="text-[10px] font-black uppercase tracking-widest opacity-60">{t.waitingForImage}</p>
                     </div>
@@ -368,34 +441,32 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
 
             {/* 3. Bottom Controls Toolbar */}
             <div className="h-20 bg-white dark:bg-[#0b1120] border-t border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 shrink-0 z-30 relative">
-                
+
                 {/* Left Controls */}
                 <div className="flex items-center gap-2">
                     <ActionTooltip side="top" content={isStreaming ? t.stopCamera : (examData.imageUrl ? (lang === 'zh' ? '請先移除影像' : 'Remove image first') : t.startCamera)}>
-                        <button 
+                        <button
                             onClick={handleToggleStream}
                             disabled={readOnly || !!examData.imageUrl}
-                            className={`p-3 rounded-2xl transition-all ${
-                                isStreaming 
-                                ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' 
+                            className={`p-3 rounded-2xl transition-all ${isStreaming
+                                ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
                                 : !!examData.imageUrl
                                     ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-600 cursor-not-allowed opacity-60'
                                     : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                            }`}
+                                }`}
                         >
                             {isStreaming ? <VideoOff size={20} /> : <Video size={20} />}
                         </button>
                     </ActionTooltip>
-                    
+
                     <ActionTooltip side="top" content={!!examData.imageUrl ? (lang === 'zh' ? '請先移除影像' : 'Remove image first') : t.uploadImage}>
-                        <button 
-                            onClick={() => fileInputRef.current?.click()} 
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
                             disabled={readOnly || isStreaming || !!examData.imageUrl}
-                            className={`p-3 rounded-2xl transition-all ${
-                                (isStreaming || !!examData.imageUrl)
-                                    ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-600 cursor-not-allowed opacity-60'
-                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                            }`}
+                            className={`p-3 rounded-2xl transition-all ${(isStreaming || !!examData.imageUrl)
+                                ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-600 cursor-not-allowed opacity-60'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                }`}
                         >
                             <CloudUpload size={20} />
                         </button>
@@ -407,8 +478,8 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
                 {isStreaming && connectionStep === 4 && (
                     <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[60]">
                         <ActionTooltip side="top" content="Capture">
-                            <button 
-                                onClick={handleCapture} 
+                            <button
+                                onClick={handleCapture}
                                 className="relative group transition-transform active:scale-95"
                             >
                                 <div className="w-16 h-16 rounded-full border-4 border-slate-200 dark:border-slate-700 flex items-center justify-center bg-white dark:bg-[#0b1120] shadow-lg">
@@ -421,9 +492,9 @@ export const MediaConsole: React.FC<MediaConsoleProps> = ({
 
                 {/* Right Controls: AI */}
                 <div className="flex items-center gap-2">
-                    <button 
-                        onClick={handleAIDetect} 
-                        disabled={isGenerating || readOnly || !examData.imageUrl} 
+                    <button
+                        onClick={handleAIDetect}
+                        disabled={isGenerating || readOnly || !examData.imageUrl}
                         className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Sparkles size={16} /> <span className="hidden sm:inline">{t.aiDetect}</span>
