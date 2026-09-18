@@ -213,13 +213,17 @@ npm run build       # 構建生產版本
 
 ## 許可證
 
-[根據項目實際情況填寫]
+本專案採用 [MIT License](../LICENSE) 開源授權。詳細條款請參閱專案根目錄下的 [LICENSE](../LICENSE) 文件。
 
 ## 貢獻
 
-歡迎提交 Issue 和 Pull Request。
+歡迎任何形式的貢獻！如果您有任何改進建議或發現問題：
+- 歡迎提交 [Issue](https://github.com/Anxin10/IEarLM/issues) 回報問題或提出新功能建議。
+- 如欲貢獻代碼，請參閱 [CONTRIBUTING.md](../CONTRIBUTING.md) 了解分支規範與 Pull Request 流程。
 
 ## 聯繫方式
 
-[根據項目實際情況填寫]
+- **專案作者**: Anxin10
+- **GitHub 倉庫**: [https://github.com/Anxin10/IEarLM](https://github.com/Anxin10/IEarLM)
+- **問題回報**: [GitHub Issues](https://github.com/Anxin10/IEarLM/issues)
 
